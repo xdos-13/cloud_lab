@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: productcatalogservice-v2
+spec:
+  selector:
+    matchLabels:
+      app: productcatalogservice
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: productcatalogservice
+        version: v2
+    spec:
+      serviceAccountName: productcatalogservice
+      containers:
+      - name: server
+        # This is your new image with the custom sunglasses
+        image: gcr.io/hybrid-text-484416-t4/productcatalogservice:v2
+        ports:
+        - containerPort: 3550
+        env:
+        - name: PORT
+          value: "3550"
