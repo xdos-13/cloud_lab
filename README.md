@@ -1,5 +1,6 @@
 ### Canary
 
+All the canary files are in the directory canary/
 
 #### Setup Istio
 
