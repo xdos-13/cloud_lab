@@ -29,6 +29,11 @@ docker build -t gcr.io/hybrid-text-484416-t4/productcatalogservice:v2 .
 docker push gcr.io/hybrid-text-484416-t4/productcatalogservice:v2
 kubectl apply -f productcatalogservice-v2.yaml
 ```
+To authentificate for push the docker build.
+```bash
+gcloud auth configure-docker
+```
+
 
 #### Configure Canary traffic
 
