@@ -1,0 +1,41 @@
+changing the photo sunglasses -> otman
+change dockerfile so no error
+
+docker build -t gcr.io/hybrid-text-484416-t4/productcatalogservice:v2 .
+
+docker push gcr.io/hybrid-text-484416-t4/productcatalogservice:v2
+
+
+# to distinguish between the versions
+kubectl patch deployment productcatalogservice -p '{"spec":{"template":{"metadata":{"labels":{"version":"v1"}}}}}'
+
+deploy productcatalogueservice-v2.yaml
+kubectl apply -f productcatalogservice-v2.yaml
+
+configurate canary-rules.yaml
+kubectl apply -f canary-rules.yaml
+
+
+
+but before we need to install lstio (kiali)
+basically:
+# 1. Download Istio
+curl -L https://istio.io/downloadIstio | sh -
+
+# 2. Go to the istio directory (replace X.X.X with the version downloaded, e.g., 1.24.0)
+cd istio-*
+
+# 3. Add istioctl to your path so you can run it
+export PATH=$PWD/bin:$PATH
+
+
+
+istioctl install --set profile=demo -y
+
+
+
+kubectl get pods -n istio-system
+
+
+
+wait till the pods are running
