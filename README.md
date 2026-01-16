@@ -25,8 +25,8 @@ kubectl patch deployment productcatalogservice -p '{"spec":{"template":{"metadat
 We add the changes to the files for the version 2. We chose productcatalogservice.
 We rebuild the docker image for the v2, and then push it.
 ```bash 
-docker build -t gcr.io/hybrid-text-484416-t4/productcatalogservice:v2 . 
-docker push gcr.io/hybrid-text-484416-t4/productcatalogservice:v2
+docker build -t gcr.io/PROJECT_ID/productcatalogservice:v2 . 
+docker push gcr.io/PROJECT_ID/productcatalogservice:v2
 kubectl apply -f productcatalogservice-v2.yaml
 ```
 To authentificate for push the docker build.
