@@ -1,0 +1,313 @@
+deploying the app [x]
+recommendationservice and addservice are not ready, pending status
+autopilot mode :
+	GKE Autopilot mode is a fully managed Kubernetes operation mode where Google Cloud handles the provisioning and management of nodes. In Autopilot:
+	You don’t manage node pools directly; you only define workloads.
+	Google automatically schedules pods on appropriately sized nodes, scaling and configuring resources behind the scenes.
+	Pods that require resources beyond available capacity are automatically rescheduled or blocked until resources are available, reducing manual intervention.
+	In your kubectl get pods output, adservice and recommendationservice are in Pending state. This usually means the scheduler cannot find nodes with enough CPU/memory to run them.
+	Autopilot hides this problem because it automatically provisions nodes with the required resources for your pods. In Standard mode, you must manually size node pools to fit all pods; in Autopilot, this limitation is abstracted away.
+	In short: Autopilot shifts resource management from the user to GKE, so Pending pods due to insufficient node capacity are less likely to occur.
+
+
+
+**stoping loadgenerator from deploying : comment in kustomize/base/kustomization.yaml
+deployed first time using manifest so use kubectl delete to undeploy it
+then kubectl apply -k . , in the kustomize dir
+
+The parameter that matters for scheduling a pod onto a node is: requests
+	Kubernetes uses the CPU and memory requests to determine whether a node has enough available resources to host the pod.
+
+	limits only sets the maximum a container can consume at runtime; it does not affect whether the pod can be scheduled.
+
+didnt need to change the requested resources for any of the services as it worked after i removed loadgenerator.
+
+The chosen services to have their cpu request divided by two are adservice (200 -> 100m) and recommendationservice (100 -> 50m), as they're not necessary for the functionning of the app.
+
+=====================================
+ANALYZING THE PROVIDED CONFIGURATION
+=====================================
+
+Here’s a structured analysis of your `cartservice.yaml`, explaining the purpose of the main parameters:
+
+---
+
+## **1. Cart Service Deployment (`Deployment`)**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cartservice
+  labels:
+    app: cartservice
+```
+
+* **apiVersion/kind** → Defines this as a **Deployment**, a Kubernetes resource for managing a set of replicated pods.
+* **metadata.name** → Unique name for the deployment.
+* **labels** → Used for selection and service mapping (`app: cartservice`).
+
+---
+
+### **Spec for Deployment**
+
+```yaml
+spec:
+  selector:
+    matchLabels:
+      app: cartservice
+```
+
+* **selector.matchLabels** → Determines which pods belong to this deployment. Must match pod template labels.
+
+```yaml
+  template:
+    metadata:
+      labels:
+        app: cartservice
+```
+
+* **template.metadata.labels** → Labels applied to pods; used for the deployment selector and service targeting.
+
+---
+
+### **Pod spec**
+
+```yaml
+    spec:
+      serviceAccountName: cartservice
+      terminationGracePeriodSeconds: 5
+```
+
+* **serviceAccountName** → Kubernetes service account used for pod RBAC permissions.
+* **terminationGracePeriodSeconds** → Grace period before forcefully killing a pod during shutdown.
+
+```yaml
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+```
+
+* **fsGroup/runAsUser/runAsGroup** → Sets user and group IDs for running the container; enhances security.
+* **runAsNonRoot: true** → Ensures the container does not run as root.
+
+---
+
+### **Container definition**
+
+```yaml
+      containers:
+      - name: server
+        image: us-central1-docker.pkg.dev/google-samples/microservices-demo/cartservice:v0.10.4
+        ports:
+        - containerPort: 7070
+```
+
+* **name** → Container identifier.
+* **image** → Container image to run.
+* **ports.containerPort** → Internal port exposed by container.
+
+```yaml
+        env:
+        - name: REDIS_ADDR
+          value: "redis-cart:6379"
+```
+
+* **env** → Environment variable for the container. Points to the Redis instance for cart storage.
+
+---
+
+### **Resource management**
+
+```yaml
+        resources:
+          requests:
+            cpu: 200m
+            memory: 64Mi
+          limits:
+            cpu: 300m
+            memory: 128Mi
+```
+
+* **requests** → Minimum CPU/memory required to schedule pod. **Used by Kubernetes scheduler**.
+* **limits** → Maximum CPU/memory the container can use at runtime.
+
+---
+
+### **Probes**
+
+```yaml
+        readinessProbe:
+          initialDelaySeconds: 15
+          grpc:
+            port: 7070
+        livenessProbe:
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          grpc:
+            port: 7070
+```
+
+* **readinessProbe** → Determines if the pod is ready to serve traffic.
+* **livenessProbe** → Detects if the pod is alive; restarts if it fails.
+* Both improve reliability and traffic routing.
+
+---
+
+## **2. Cart Service Kubernetes Service**
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: cartservice
+spec:
+  type: ClusterIP
+  selector:
+    app: cartservice
+  ports:
+  - name: grpc
+    port: 7070
+    targetPort: 7070
+```
+
+* **Service** exposes pods to other services within the cluster.
+* **type: ClusterIP** → Only accessible internally within cluster.
+* **selector** → Targets pods with `app: cartservice`.
+* **ports** → Maps service port to container port.
+
+---
+
+## **3. ServiceAccount**
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cartservice
+```
+
+* Provides RBAC permissions for pods if needed.
+* Ensures pods run with the correct privileges in the cluster.
+
+---
+
+## **4. Redis Cart Deployment**
+
+* Redis is deployed as a separate pod (`redis-cart`) with its own securityContext, ports, and volume.
+* **volume: emptyDir** → Temporary storage for Redis, deleted if pod restarts.
+* **resources** → Similar to cartservice; ensures scheduling and limits resource usage.
+* **readinessProbe & livenessProbe** → Ensures Redis is running before other pods depend on it.
+
+---
+
+## **Summary**
+
+* `requests` → Controls scheduling; `limits` → caps runtime usage.
+* **securityContext** → Ensures pods run with least privileges.
+* **probes** → Improve reliability and traffic routing.
+* **Service** → Exposes deployment internally to other services.
+* **ServiceAccount** → Grants RBAC permissions for pods.
+
+================================
+LOAD GENERATOR ON LOCAL MACHINE
+================================
+
+using docker image from microservice-demo/src/loadgenerator
+	Dockerfile → defines the load generator container
+	locustfile.py → defines the user scenarios and load parameters
+
+- Building docker image 
+
+docker build -t online-boutique-loadgen . | -t tags for easier refernce 
+
+had to modify the docker file due to deprecation
+
+FROM --platform=$BUILDPLATFORM python:3.14.2-alpine AS base | deprecated bad bad :(
+
+FROM python:3.14.2-alpine AS base | vewwy vewwy gud :) uwu ToT
+
+- Getting front end external ip address , 34.6.165.94
+
+kubectl get service frontend-external
+
+- running the load generator
+
+docker run -d \
+  --name loadgenerator \
+  -e FRONTEND_ADDR="<FRONTEND_IP>:80" \
+  -e USERS="10" \
+  -p 8089:8089 \
+  loadgenerator
+
+- load generator logs to see trafic
+sudo docker logs loadgenerator
+
+
+====================================
+LOADGENERATOR IN G CLOUD
+====================================
+
+followed this 
+https://roparst.gricad-pages.univ-grenoble-alpes.fr/cloud-tutorials/terraform/
+ip = "35.221.225.81"
+
+to connect to a vm : 
+	gcloud compute ssh <instance name> --zone asia-east1-b
+
+to get instance name : gcloud compute instances list
+
+
+
+=======================================================================================
+ADVANCED
+=====================
+
+Monitoring
+
+create a namespace for monitoring : kubectl create namespace monitoring
+
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
+ helm search repo kube-prometheus-stack
+
+NAME                                      	CHART VERSION	APP VERSION	DESCRIPTION                                       
+prometheus-community/kube-prometheus-stack	80.14.4      	v0.87.1    	kube-prometheus-stack collects Kubernetes manif...
+
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring
+
+Get Grafana 'admin' user password by running:
+
+  kubectl --namespace monitoring get secrets monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d ; echo
+1fW8wAkS0MfUGO9EHXU6lASkfqOYS5aRfeBq7n4T
+
+-------------
+Performance evaluation
+
+using script to automate steps, setup_loadgen.sh does everything needed from installing dockre to setting up the git repo
+had to change entry point for the dockr command to use locust
+
+modify terraform file
+terraform init, plan, apply
+ip = "34.12.72.37"
+ssh : gcloud compute ssh loadgen-vm-0 --zone=europe-west4-b
+
+to get testing CSVs
+# From your local machine
+mkdir -p ~/gke-performance-results
+
+gcloud compute scp --recurse \
+  ${var.instance-name}-0:/opt/locust-results/* \
+  ~/gke-performance-results/ \
+  --zone=YOUR_ZONE
+
+gcloud compute scp --recurse "loadgen-vm-0:/opt/locust-results/*" ~/gke-performance-results/ --zone=europe-west4-b
+use "" to stop zsh from trying to expand /* thus not working
+
+# View results
+cd ~/gke-performance-results
+ls -lh

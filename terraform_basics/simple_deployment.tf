@@ -56,7 +56,7 @@ output "test_guide" {
        kubectl get service frontend-external
     
     3. SSH into load generator:
-       ${self.triggers.ssh_cmd}
+      ${"gcloud compute ssh ${var.instance-name}-0 --zone=${var.zone}"}
     
     4. PHASE 1 - Single Instance Tests (Baseline):
        /opt/loadgen-scripts/run_all_tests.sh <FRONTEND_IP>
