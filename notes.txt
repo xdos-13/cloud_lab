@@ -285,6 +285,14 @@ Get Grafana 'admin' user password by running:
   kubectl --namespace monitoring get secrets monitoring-grafana -o jsonpath="{.data.admin-password}" | base64 -d ; echo
 1fW8wAkS0MfUGO9EHXU6lASkfqOYS5aRfeBq7n4T
 
+forwarding grafana port locally :
+kubectl port-forward svc/monitoring-grafana 3000:80 -n monitoring
+
+* if localhost:3000 doesnt show grafan maybe some other file i using the port
+list processes on :3000 and kill it
+lsof -i :3000
+kill -9 id
+
 -------------
 Performance evaluation
 
